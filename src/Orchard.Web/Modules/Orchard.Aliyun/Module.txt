@@ -1,0 +1,13 @@
+﻿Name: Orchard.Aliyun
+AntiForgery: enabled
+Author: LEI ERIC HE
+Website: http://www.aivics.com
+Version: 1.0
+OrchardVersion: 1.0
+Description: Description for the module
+Features:
+    Orchard.Aliyun.Media:
+        Name: Aliyun OSS based Media Storage
+        Description: Activates an Orchard media storage provider that targets Aliyun OSS Blob Storage.
+        Dependencies: Orchard.Aliyun, Orchard.MediaProcessing,  Orchard.MediaLibrary
+        Category: Hosting
