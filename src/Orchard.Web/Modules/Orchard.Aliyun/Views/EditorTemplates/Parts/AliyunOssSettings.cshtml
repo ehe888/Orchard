@@ -1,0 +1,30 @@
+﻿@model Orchard.Aliyun.Models.AliyunOssSettingsPart
+
+<fieldset>
+    <legend>@T("AliyunOss")</legend>
+    <div>
+        <label for="AliyunOssSettings_Endpoint">@T("Aliyun OSS Endpoint withoud bucketname")</label>
+        @Html.TextBoxFor(m => m.Endpoint, new { @class = "text large" })
+        @Html.ValidationMessage("Endpoint", "Required")
+    </div>
+    <div>
+        <label for="AliyunOssSettings_BucketName">@T("Bucket Name")</label>
+        @Html.TextBoxFor(m => m.BucketName, new { @class = "text large" })
+        @Html.ValidationMessage("BucketName", "*")
+    </div>
+    <div>
+        <label for="AliyunOssSettings_PublicEntryUrl">@T("Public Entry Url (E.g. CDN base URL)")</label>
+        @Html.TextBoxFor(m => m.PublicEntryUrl, new { @class = "text large" })
+        @Html.ValidationMessage("PublicEntryUrl", "*")
+    </div>
+    <div>
+        <label for="AliyunOssSettings_AccessKeyId">@T("AccessKey Id")</label>
+        @Html.TextBoxFor(m => m.AccessKeyId, new { @class = "text large" })
+        @Html.ValidationMessage("AccessKeyId", "*")
+    </div>
+    <div>
+        <label for="AliyunOssSettings_AccessKeySecret">@T("AccessKey Secret")</label>
+        @Html.TextBoxFor(m => m.AccessKeySecret, new { @class = "text large" })
+        @Html.ValidationMessage("AccessKeySecret", "*")
+    </div>
+</fieldset>

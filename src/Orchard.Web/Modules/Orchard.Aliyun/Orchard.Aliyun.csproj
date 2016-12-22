@@ -77,9 +77,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Constants.cs" />
+    <Compile Include="Handlers\AliyunOssSettingsPartHandler.cs" />
     <Compile Include="MediaLibrary\Factories\ImageFactory.cs" />
     <Compile Include="MediaLibrary\Models\MediaFolder.cs" />
     <Compile Include="MediaProcessing\Services\ImageProfileManager.cs" />
+    <Compile Include="Models\AliyunOssSettingsPart.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Services\FileSystems\AliyunFileSystem.cs" />
     <Compile Include="Services\FileSystems\Media\AliyunBlobStorageProvider.cs" />
@@ -123,7 +125,10 @@
     <Content Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="MediaLibrary\Controllers\" />
+    <Folder Include="Controllers\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Views\EditorTemplates\Parts\AliyunOssSettings.cshtml" />
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>

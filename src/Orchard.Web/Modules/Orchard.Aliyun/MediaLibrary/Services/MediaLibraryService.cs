@@ -330,24 +330,26 @@ namespace Orchard.Aliyun.MediaLibrary.Services {
         /// <param name="folderPath">The path to the folder to be renamed.</param>
         /// <param name="newFolderName">The new folder name.</param>
         public void RenameFolder(string folderPath, string newFolderName) {
-            Argument.ThrowIfNullOrEmpty(folderPath, "folderPath");
-            Argument.ThrowIfNullOrEmpty(newFolderName, "newFolderName");
+            throw new NotSupportedException("Aliyun OSS Storage does not support Folder rename!!");
 
-            try {
-                var segments = folderPath.Split(new char[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries).ToArray();
-                var newFolderPath = String.Join(Path.DirectorySeparatorChar.ToString(), segments.Take(segments.Length - 1).Union(new[] { newFolderName }));
+            //Argument.ThrowIfNullOrEmpty(folderPath, "folderPath");
+            //Argument.ThrowIfNullOrEmpty(newFolderName, "newFolderName");
 
-                var mediaParts = BuildGetMediaContentItemsQuery(_orchardServices.ContentManager, folderPath, true).List();
-                foreach (var mediaPart in mediaParts) {
-                    mediaPart.FolderPath = newFolderPath + mediaPart.FolderPath.Substring(folderPath.Length);
-                }
+            //try {
+            //    var segments = folderPath.Split(new char[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries).ToArray();
+            //    var newFolderPath = String.Join(Path.DirectorySeparatorChar.ToString(), segments.Take(segments.Length - 1).Union(new[] { newFolderName }));
 
-                _storageProvider.RenameFolder(folderPath, _storageProvider.Combine(Path.GetDirectoryName(folderPath), newFolderName));
-            }
-            catch (Exception) {
-                _orchardServices.TransactionManager.Cancel();
-                throw;
-            }
+            //    var mediaParts = BuildGetMediaContentItemsQuery(_orchardServices.ContentManager, folderPath, true).List();
+            //    foreach (var mediaPart in mediaParts) {
+            //        mediaPart.FolderPath = newFolderPath + mediaPart.FolderPath.Substring(folderPath.Length);
+            //    }
+
+            //    _storageProvider.RenameFolder(folderPath, _storageProvider.Combine(Path.GetDirectoryName(folderPath), newFolderName));
+            //}
+            //catch (Exception) {
+            //    _orchardServices.TransactionManager.Cancel();
+            //    throw;
+            //}
         }
 
         /// <summary>

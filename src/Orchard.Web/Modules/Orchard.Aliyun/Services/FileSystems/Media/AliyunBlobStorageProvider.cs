@@ -2,42 +2,84 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Web;
 using Orchard.Environment.Configuration;
-using Orchard.Environment.Extensions;
+using Orchard.ContentManagement;
 using Orchard.FileSystems.Media;
 using Orchard.Logging;
 using Aliyun.OSS;
 using Aliyun.OSS.Common;
 using System.Drawing;
+using Orchard.Aliyun.Models;
 
 namespace Orchard.Aliyun.Services.FileSystems.Media {
-    //[OrchardFeature(Constants.MediaStorageFeatureName)]
-    //[OrchardSuppressDependency("Orchard.FileSystems.Media.FileSystemStorageProvider")]
+    
     public class AliyunBlobStorageProvider : IStorageProvider {
-
-        private readonly string _accessKeyId = "XFVMdBtG3X0oLy9y";
-        private readonly string _accessKeySecret = "xePdm1lRWznii24kaak7Y6n5u3JjwD";
-        private readonly string _endpoint = "http://oss-cn-shanghai.aliyuncs.com";
-        private readonly string _publicEntryUrl = "http://orchardlib.oss-cn-shanghai.aliyuncs.com";
-        private static OssClient _ossClient;
-        private readonly string _bucketName = "orchardlib";
-
+        
         private readonly ShellSettings _shellSettings;
         private readonly IMimeTypeProvider _mimeTypeProvider;
+        private readonly IOrchardServices _orchardServices;
+       
+
+        private AliyunOssSettingsPart Settings
+        {
+            get { return _orchardServices.WorkContext.CurrentSite.As<AliyunOssSettingsPart>(); }
+        }
+
+        private string BucketName {
+            get { return Settings.BucketName; }
+        }
+        private string Endpoint
+        {
+            get { return Settings.Endpoint; }
+        }
+
+        private string PublicEntryUrl
+        {
+            get { return Settings.PublicEntryUrl; }
+        }
+
+        private string AccessKeyId
+        {
+            get { return Settings.AccessKeyId; }
+        }
+
+        private string AccessKeySecret
+        {
+            get { return Settings.AccessKeySecret; }
+        }
+
+        private OssClient OssClient
+        {
+            get {
+                if (this.Endpoint == null)
+                    throw new InvalidDataException("Aliyun OSS Endpoint Setting should not be null");
+                if (this.AccessKeyId == null)
+                    throw new InvalidDataException("Aliyun OSS AccessKeyId should not be null");
+                if(this.AccessKeySecret == null)
+                    throw new InvalidDataException("Aliyun OSS AccessKeySecret should not be null");
+
+                //Construct a new OSSClient instance
+                var conf = new ClientConfiguration();
+                conf.MaxErrorRetry = 3;     //设置请求发生错误时最大的重试次数
+                conf.ConnectionTimeout = 300000;  //设置连接超时时间
+                return new OssClient(this.Endpoint, this.AccessKeyId, this.AccessKeySecret, conf);
+
+                //TODO:
+                //目前我们每次Get都会创建一个新的OssClient对象，为了更好的性能我们应该考虑缓存OssClient
+                //每次从缓存中取得OssClient对象，为了确保参数正确，每次得到缓存的OssClient后再重新设置相关的属性
+
+            }
+        }
 
         private ILogger Logger { get; set; }
 
-        public AliyunBlobStorageProvider(ShellSettings shellSettings, IMimeTypeProvider mimeTypeProvider) { 
+        public AliyunBlobStorageProvider(
+            ShellSettings shellSettings, 
+            IMimeTypeProvider mimeTypeProvider,
+            IOrchardServices orchardServices) { 
             _shellSettings = shellSettings;
             _mimeTypeProvider = mimeTypeProvider;
-
-            //Construct a new OSSClient instance
-            var conf = new ClientConfiguration();
-            conf.MaxErrorRetry = 3;     //设置请求发生错误时最大的重试次数
-            conf.ConnectionTimeout = 300000;  //设置连接超时时间
-            
-            _ossClient = new OssClient(_endpoint, _accessKeyId, _accessKeySecret, conf);
+            _orchardServices = orchardServices;
 
             Logger = NullLogger.Instance;
         }
@@ -51,11 +93,27 @@ namespace Orchard.Aliyun.Services.FileSystems.Media {
         }
 
         public IStorageFile CreateFile(string path) {
-            return new AliyunOssStorageFile(_ossClient, path);
+            return new AliyunOssStorageFile(OssClient, path);
         }
 
         public void CreateFolder(string path) {
-            throw new NotImplementedException();
+            try {
+                // 重要: 这时候作为目录的key必须以斜线（／）结尾
+                string key = path.EndsWith("/") ? path : path + "/";
+
+                if (key.StartsWith("/")) {
+                    key = key.Substring(1);
+                }
+                
+                // 此时的目录是一个内容为空的文件
+                using (var stream = new MemoryStream()) {
+                    OssClient.PutObject(this.BucketName, key, stream);
+                    Console.WriteLine("Create dir {0} succeeded", key);
+                }
+            }
+            catch (Exception ex) {
+                Console.WriteLine("Create dir failed, {0}", ex.Message);
+            }
         }
 
         public void DeleteFile(string path) {
@@ -75,13 +133,13 @@ namespace Orchard.Aliyun.Services.FileSystems.Media {
         /// <returns></returns>
         public bool FileExists(string path) {
             try {
-                var listObjectsRequest = new ListObjectsRequest(_bucketName) {
+                var listObjectsRequest = new ListObjectsRequest(this.BucketName) {
                     Prefix = path.Substring(1)
                 };
-                var result = _ossClient.ListObjects(listObjectsRequest);
+                var result = OssClient.ListObjects(listObjectsRequest);
 
                 Console.WriteLine("List object succeeded");
-
+                
                 if (result.ObjectSummaries.Any(summary => summary.Key == path.Substring(1))) {
                     return true;
                 }
@@ -94,10 +152,10 @@ namespace Orchard.Aliyun.Services.FileSystems.Media {
 
         public bool FolderExists(string path) {
             try {
-                var listObjectsRequest = new ListObjectsRequest(_bucketName) {
+                var listObjectsRequest = new ListObjectsRequest(this.BucketName) {
                     Prefix = path.Substring(1)
                 };
-                var result = _ossClient.ListObjects(listObjectsRequest);
+                var result = OssClient.ListObjects(listObjectsRequest);
 
                 Console.WriteLine("List object succeeded");
 
@@ -131,7 +189,7 @@ namespace Orchard.Aliyun.Services.FileSystems.Media {
                 if (isAbsoluteUri) {
                     realPath = System.Web.HttpUtility.UrlDecode(uriResult.AbsolutePath);
                 }
-                var metadata = _ossClient.GetObjectMetadata(_bucketName, realPath.Substring(1));
+                var metadata = OssClient.GetObjectMetadata(this.BucketName, realPath.Substring(1));
                 
 
                 Console.WriteLine("Get object meta succeeded");
@@ -163,7 +221,7 @@ namespace Orchard.Aliyun.Services.FileSystems.Media {
         }
 
         public string GetPublicUrl(string path) {
-            var baseUri = new Uri(_publicEntryUrl);
+            var baseUri = new Uri(PublicEntryUrl);
             return new Uri(baseUri, path).AbsoluteUri;
         }
 
@@ -180,13 +238,13 @@ namespace Orchard.Aliyun.Services.FileSystems.Media {
             List<IStorageFile> files = new List<IStorageFile>();
 
             try {
-                var listObjectsRequest = new ListObjectsRequest(_bucketName) {
+                var listObjectsRequest = new ListObjectsRequest(this.BucketName) {
                     Delimiter = "/",
                     Prefix = path == null ? string.Empty : path.Substring(1),
                     MaxKeys = 1000,
                     Marker = string.Empty
                 };
-                var result = _ossClient.ListObjects(listObjectsRequest);
+                var result = OssClient.ListObjects(listObjectsRequest);
 
                 Console.WriteLine("List object succeeded");
                 //foreach (var summary in result.ObjectSummaries) {
@@ -208,13 +266,13 @@ namespace Orchard.Aliyun.Services.FileSystems.Media {
             List<IStorageFolder> folders = new List<IStorageFolder>();
 
             try {
-                var listObjectsRequest = new ListObjectsRequest(_bucketName) {
+                var listObjectsRequest = new ListObjectsRequest(this.BucketName) {
                     Delimiter = "/",
                     Prefix = path == null ? string.Empty : path.Substring(1),
                     MaxKeys = 1000,
                     Marker = string.Empty
                 };
-                var result = _ossClient.ListObjects(listObjectsRequest);
+                var result = OssClient.ListObjects(listObjectsRequest);
 
                 Console.WriteLine("List object succeeded");
                 //foreach (var summary in result.ObjectSummaries) {
@@ -249,37 +307,96 @@ namespace Orchard.Aliyun.Services.FileSystems.Media {
             }
 
             var mimeType = _mimeTypeProvider.GetMimeType(path);
-
             var metadata = new ObjectMetadata();
             metadata.UserMetadata.Add("mimeType", mimeType);
-            //metadata.ContentType = mimeType;
-            //metadata.ContentLength = inputStream.Length;
 
-            try {
-                using (var image = Image.FromStream(inputStream)) {
-                    metadata.UserMetadata.Add("width", image.Width.ToString());
-                    metadata.UserMetadata.Add("height", image.Height.ToString());
+            //-------------------------------------------
+            //  Check the image extension - If it is image to through image process flow
+            //-------------------------------------------
+            if (Path.GetExtension(path).ToLower() == ".jpg"
+                || Path.GetExtension(path).ToLower() == ".png"
+                || Path.GetExtension(path).ToLower() == ".gif"
+                || Path.GetExtension(path).ToLower() == ".jpeg"
+                || Path.GetExtension(path).ToLower() == ".bmp") {
+
+                try {
+                    using (var image = Image.FromStream(inputStream)) {
+
+                        // http://stackoverflow.com/a/23400751/4741442
+                        // Uploading an image taken with an iPhone (for example), can cause incorrect orientation, 
+                        // because the meta data (EXIF data) from the rotation is not read.
+                        // So we have to fix it at uploading time
+                        var rawFormat = image.RawFormat;
+
+                        if (Array.IndexOf(image.PropertyIdList, 274) > -1) {
+                            var orientation = (int)image.GetPropertyItem(274).Value[0];
+                            switch (orientation) {
+                                case 1:
+                                    // No rotation required.
+                                    break;
+                                case 2:
+                                    image.RotateFlip(RotateFlipType.RotateNoneFlipX);
+                                    break;
+                                case 3:
+                                    image.RotateFlip(RotateFlipType.Rotate180FlipNone);
+                                    break;
+                                case 4:
+                                    image.RotateFlip(RotateFlipType.Rotate180FlipX);
+                                    break;
+                                case 5:
+                                    image.RotateFlip(RotateFlipType.Rotate90FlipX);
+                                    break;
+                                case 6:
+                                    image.RotateFlip(RotateFlipType.Rotate90FlipNone);
+                                    break;
+                                case 7:
+                                    image.RotateFlip(RotateFlipType.Rotate270FlipX);
+                                    break;
+                                case 8:
+                                    image.RotateFlip(RotateFlipType.Rotate270FlipNone);
+                                    break;
+                            }
+                            // This EXIF data is now invalid and should be removed.
+                            image.RemovePropertyItem(274);
+                        }
+
+                        metadata.UserMetadata.Add("width", image.Width.ToString());
+                        metadata.UserMetadata.Add("height", image.Height.ToString());
+
+                        using (MemoryStream mStream = new MemoryStream()) {
+                            image.Save(mStream, rawFormat);
+                            mStream.Position = 0; // If excluded, SaveStream can't read the memory stream
+
+                            OssClient.PutObject(this.BucketName, key, mStream, metadata);
+                            Console.WriteLine("Create dir {0} succeeded", path);
+                        }
+
+                    }
+                }
+                //catch (ArgumentException) {
+                //    // Still trying to get .ico dimensions when it's blocked in System.Drawing, 
+                //    // see: https://github.com/OrchardCMS/Orchard/issues/4473
+
+                //    //if (mimeType != "image/x-icon" && mimeType != "image/vnd.microsoft.icon") {
+                //    //    throw;
+                //    //}
+                //    //inputStream.Seek(0, SeekOrigin.Begin);
+                //    //TryFillDimensionsForIco(inputStream, metadata);
+                //}
+                catch (Exception ex) {
+                    Logger.Error("Save file failed, {0}", ex.Message);
                 }
             }
-            catch (ArgumentException) {
-            // Still trying to get .ico dimensions when it's blocked in System.Drawing, 
-            // see: https://github.com/OrchardCMS/Orchard/issues/4473
-
-                if (mimeType != "image/x-icon" && mimeType != "image/vnd.microsoft.icon") {
-                    throw;
+            else {
+                try {
+                    OssClient.PutObject(this.BucketName, key, inputStream, metadata);
+                    Console.WriteLine("Create dir {0} succeeded", path);
                 }
-                inputStream.Seek(0, SeekOrigin.Begin);
-                TryFillDimensionsForIco(inputStream, metadata);
+                catch (Exception ex) {
+                    Logger.Error("Save file failed, {0}", ex.Message);
+                }
             }
-
-            try {
-                inputStream.Seek(0, SeekOrigin.Begin);
-                _ossClient.PutObject(_bucketName, key, inputStream, metadata);
-                Console.WriteLine("Create dir {0} succeeded", path);
-            }
-            catch(Exception ex) {
-                Logger.Error("Save file failed, {0}", ex.Message);
-            }
+            
         }
 
 
